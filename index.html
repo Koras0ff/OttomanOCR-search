@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ottoman Manuscript Viewer</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --border: #d0cdc6;
+  --border-light: #e8e5df;
+  --text: #1a1a1a;
+  --text-dim: #7a7570;
+  --text-faint: #aaa49e;
+  --line-fill: rgba(255, 200, 0, 0.15);
+  --line-stroke: rgba(180, 140, 0, 0.7);
+  --line-hover: rgba(255, 200, 0, 0.35);
+  --line-sel: rgba(255, 200, 0, 0.5);
+  --search-hl: rgba(255, 160, 0, 0.55);
+  --search-hl-active: rgba(255, 90, 0, 0.7);
+  --panel-w: 240px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── toolbar ── */
+#toolbar {
+  height: 38px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#toolbar .title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 6px;
+}
+
+#toolbar .sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+/* search */
+#search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  max-width: 420px;
+}
+
+#search-input {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  direction: rtl;
+  font-family: inherit;
+  outline: none;
+}
+
+#search-input:focus {
+  border-color: #999;
+  background: #fff;
+}
+
+#search-input::placeholder {
+  direction: rtl;
+  color: var(--text-faint);
+}
+
+.tb-btn {
+  height: 26px;
+  min-width: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tb-btn:hover { background: var(--bg); border-color: #999; }
+.tb-btn:active { background: #eee; }
+
+#search-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 60px;
+  white-space: nowrap;
+}
+
+/* zoom */
+#zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+#zoom-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 34px;
+  text-align: center;
+}
+
+/* ── layout ── */
+#layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── sidebar ── */
+#sidebar {
+  width: 160px;
+  background: #e8e6e0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+#sidebar-head {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-dim);
+  background: #dddad3;
+  flex-shrink: 0;
+}
+
+#page-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+
+#page-list::-webkit-scrollbar { width: 5px; }
+#page-list::-webkit-scrollbar-thumb { background: #bbb8b2; border-radius: 3px; }
+
+.page-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 10px 6px;
+  cursor: pointer;
+  user-select: none;
+  gap: 5px;
+}
+
+.page-item:hover .pg-thumb-wrap { border-color: #999; }
+
+.page-item.active .pg-thumb-wrap {
+  border-color: #3a6ea5;
+  box-shadow: 0 0 0 2px rgba(58,110,165,.35);
+}
+
+.page-item.has-hit .pg-thumb-wrap { border-color: #b84800; }
+.page-item.active.has-hit .pg-thumb-wrap {
+  border-color: #b84800;
+  box-shadow: 0 0 0 2px rgba(184,72,0,.35);
+}
+
+.pg-thumb-wrap {
+  width: 110px;
+  border: 2px solid #bbb8b2;
+  border-radius: 2px;
+  background: #fff;
+  overflow: hidden;
+  line-height: 0;
+  transition: border-color .12s, box-shadow .12s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+
+.pg-thumb-wrap img {
+  width: 100%;
+  display: block;
+  min-height: 140px;
+  background: #ddd;
+}
+
+.pg-num {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+#canvas-wrap img {
+  display: block;
+  user-select: none;
+  width: 100%; 
+  height: auto;
+}
+
+#canvas-wrap svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%; 
+  pointer-events: none;
+}
+
+.page-item.active .pg-num { color: #3a6ea5; font-weight: 700; }
+.page-item.has-hit .pg-num { color: #b84800; }
+
+.pg-hit-badge {
+  font-size: 9px;
+  background: #b84800;
+  color: #fff;
+  border-radius: 8px;
+  padding: 1px 5px;
+  display: none;
+}
+
+.page-item.has-hit .pg-hit-badge { display: inline-block; }
+
+/* ── info panel ── */
+#info-panel {
+  border-top: 1px solid var(--border);
+  padding: 10px;
+  min-height: 80px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+#info-key {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  margin-bottom: 5px;
+}
+
+#info-text {
+  font-size: 15px;
+  line-height: 1.8;
+  direction: rtl;
+  text-align: right;
+  word-break: break-word;
+  color: var(--text);
+}
+
+#info-text.placeholder {
+  font-size: 11px;
+  color: var(--text-faint);
+  direction: ltr;
+  text-align: left;
+  font-style: italic;
+}
+
+/* ── viewer ── */
+#viewer {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bg);
+}
+
+#viewer::-webkit-scrollbar { width: 6px; height: 6px; }
+#viewer::-webkit-scrollbar-thumb { background: var(--border); }
+
+#canvas-wrap {
+  position: relative;
+  display: none;
+  box-shadow: 0 2px 12px rgba(0,0,0,.18);
+  border: 1px solid var(--border);
+}
+
+#canvas-wrap img {
+  display: block;
+  user-select: none;
+}
+
+#canvas-wrap svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+#canvas-wrap svg polygon {
+  pointer-events: all;
+  cursor: default;
+}
+
+#canvas-wrap svg polygon.is-line {
+  cursor: pointer;
+}
+
+#canvas-wrap svg polygon.is-line:hover {
+  fill: var(--line-hover) !important;
+  stroke: rgba(180,140,0,.9) !important;
+}
+
+#canvas-wrap svg polygon.selected {
+  fill: var(--line-sel) !important;
+  stroke: rgba(160,120,0,1) !important;
+  stroke-width: 2;
+}
+
+#canvas-wrap svg polygon.search-hit {
+  fill: var(--search-hl) !important;
+  stroke: rgba(200,100,0,.8) !important;
+  stroke-width: 1.5;
+}
+
+#canvas-wrap svg polygon.search-hit.active-hit {
+  fill: var(--search-hl-active) !important;
+  stroke: rgba(180,60,0,1) !important;
+  stroke-width: 2.5;
+}
+
+/* ── tooltip ── */
+#tooltip {
+  position: fixed;
+  background: rgba(30,28,26,.93);
+  color: #f0ece4;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 14px;
+  direction: rtl;
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+/* ── empty ── */
+#empty-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="title">Manuscript Viewer</span>
+  <div class="sep"></div>
+
+  <div id="search-wrap">
+    <input type="text" id="search-input" placeholder="Search transcriptions..." autocomplete="off" spellcheck="false" disabled>
+    <button class="tb-btn" id="btn-prev" title="Previous match">&#8593;</button>
+    <button class="tb-btn" id="btn-next" title="Next match">&#8595;</button>
+    <button class="tb-btn" id="btn-clear" title="Clear search">&#x2715;</button>
+    <span id="search-count"></span>
+  </div>
+
+  <div class="sep"></div>
+  <div id="zoom-group">
+    <button class="tb-btn" id="zout">&#8722;</button>
+    <span id="zoom-label">100%</span>
+    <button class="tb-btn" id="zin">+</button>
+    <button class="tb-btn" id="zreset">1:1</button>
+  </div>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div id="sidebar-head">Pages</div>
+    <div id="page-list"></div>
+    <div id="info-panel">
+      <div id="info-key"></div>
+      <div id="info-text" class="placeholder">Click a line to see transcription</div>
+    </div>
+  </div>
+
+  <div id="viewer">
+    <div id="empty-state">Loading data...</div>
+    <div id="canvas-wrap">
+      <img id="page-img" alt="">
+      <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ── Configuration ──────────────────────────────────────────────────────
+const CONFIG = {
+  jsonUrl: './transcriptions_ziyapasa.json',
+  imageDir: './images/', // Make sure your images are here
+  imageExt: '.png'       // Change to .jpg if needed
+};
+
+// ── Global Data ────────────────────────────────────────────────────────
+let TRANSCRIPTIONS = {};
+let LABELS = {};
+let PAGES = [];
+
+const CAT_STYLE = {
+  4:  { fill:'rgba(255,200,0,.12)',  stroke:'rgba(180,140,0,.65)' },
+  DEFAULT: { fill:'rgba(60,140,80,.06)', stroke:'rgba(60,140,80,.40)' }
+};
+
+// ── State ──────────────────────────────────────────────────────────────
+let cur = null, zoom = 1, sel = null;
+let searchHits = [];
+let searchIdx  = -1;
+
+const $ = id => document.getElementById(id);
+const pl = $('page-list'), es = $('empty-state'), cw = $('canvas-wrap'),
+      pi = $('page-img'),  ov = $('overlay'),
+      ikey = $('info-key'), itext = $('info-text'),
+      tt = $('tooltip'), sc = $('search-count'),
+      searchInput = $('search-input');
+
+// ── Initialization (Fetch JSON) ────────────────────────────────────────
+async function initApp() {
+  try {
+    const response = await fetch(CONFIG.jsonUrl);
+    if (!response.ok) throw new Error("HTTP error " + response.status);
+    const data = await response.json();
+
+    // Parse data into the required format
+    for (const [pageKey, pageData] of Object.entries(data)) {
+      PAGES.push(pageKey);
+      LABELS[pageKey] = [];
+      
+      if (pageData.lines) {
+        pageData.lines.forEach(line => {
+          const idx = line.line_index;
+          const lk = `${pageKey}_line_${idx}`;
+          
+          if (line.transcription) {
+            TRANSCRIPTIONS[lk] = line.transcription;
+          }
+          
+          const pts = line.polygon.map(pt => ({ x: pt[0], y: pt[1] }));
+          
+          LABELS[pageKey].push({
+            cat: 4,
+            file_line_idx: idx,
+            points: pts
+          });
+        });
+      }
+    }
+
+    // Sort pages numerically
+    PAGES.sort((a, b) => {
+      const numA = parseInt(a.match(/\d+/)?.[0] || 0);
+      const numB = parseInt(b.match(/\d+/)?.[0] || 0);
+      return numA - numB;
+    });
+
+    searchInput.disabled = false; // Enable search
+    renderSidebar(null);
+    if (PAGES.length) showPage(PAGES[0]);
+
+  } catch (error) {
+    es.style.display = 'flex';
+    cw.style.display = 'none';
+    es.innerHTML = `<div style="text-align:center; color:red;">
+      <b>Error loading JSON data</b><br>
+      ${error.message}<br><br>
+      Make sure you are running a local server (e.g. VS Code Live Server)
+    </div>`;
+    console.error(error);
+  }
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────
+function renderSidebar(hitPages) {
+  pl.innerHTML = '';
+  PAGES.forEach(key => {
+    const hits = hitPages ? (hitPages[key] || 0) : 0;
+    const pgNum = key.match(/\d+/)?.[0] || key;
+    const d = document.createElement('div');
+    d.className = 'page-item' + (hits ? ' has-hit' : '') + (key === cur ? ' active' : '');
+    d.dataset.key = key;
+    
+    // Construct Image URL dynamically
+    const imgSrc = `${CONFIG.imageDir}${key}${CONFIG.imageExt}`;
+    
+    d.innerHTML = `
+      <div class="pg-thumb-wrap">
+        <img src="${imgSrc}" loading="lazy" alt="${key}" onerror="this.style.display='none'">
+      </div>
+      <span class="pg-num">${pgNum}</span>
+      <span class="pg-hit-badge">${hits} hit${hits>1?'s':''}</span>`;
+    d.addEventListener('click', () => showPage(key));
+    pl.appendChild(d);
+  });
+}
+
+// ── Show page ──────────────────────────────────────────────────────────
+function showPage(key, callback) {
+  cur = key; sel = null; resetInfo();
+  document.querySelectorAll('.page-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.key === key));
+  
+  es.style.display = 'none'; 
+  cw.style.display = 'inline-block';
+  
+  if (pi.dataset.loaded === key) {
+    drawOverlay(key); if (callback) callback();
+  } else {
+    // Construct Image URL dynamically
+    const imgSrc = `${CONFIG.imageDir}${key}${CONFIG.imageExt}`;
+    
+    pi.onload = () => { pi.dataset.loaded = key; drawOverlay(key); if (callback) callback(); };
+    pi.onerror = () => {
+      es.style.display = 'flex'; cw.style.display = 'none';
+      es.textContent = `Image not found: ${imgSrc}`;
+    };
+    pi.src = imgSrc;
+  }
+  
+  const el = pl.querySelector(`[data-key="${key}"]`);
+  if (el) el.scrollIntoView({block:'nearest'});
+}
+
+// ── Draw overlay ───────────────────────────────────────────────────────
+function drawOverlay(key) {
+  ov.innerHTML = '';
+  const shapes = LABELS[key] || [];
+  const W = pi.naturalWidth, H = pi.naturalHeight;
+
+  ov.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  ov.setAttribute('preserveAspectRatio', 'none');
+
+  const hitLks = new Set(searchHits.filter(h => h.pageKey === key).map(h => h.lk));
+  const activeHitLk = searchIdx >= 0 && searchHits[searchIdx]?.pageKey === key ? searchHits[searchIdx].lk : null;
+
+  shapes.forEach((shape) => {
+    const { cat, points, file_line_idx } = shape;
+    const st = CAT_STYLE[cat] || CAT_STYLE.DEFAULT;
+    
+    // Absolute coordinates
+    const pts = points.map(p => `${p.x},${p.y}`).join(' ');
+    
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', pts);
+    poly.setAttribute('vector-effect', 'non-scaling-stroke');
+    poly.setAttribute('stroke-width', '1.2');
+
+    if (cat === 4) {
+      const lk = `${key}_line_${file_line_idx}`;
+      poly.classList.add('is-line');
+      poly.dataset.lk = lk;
+
+      if (lk === activeHitLk) {
+        poly.classList.add('search-hit', 'active-hit');
+      } else if (hitLks.has(lk)) {
+        poly.classList.add('search-hit');
+      } else {
+        poly.setAttribute('fill', st.fill);
+        poly.setAttribute('stroke', st.stroke);
+      }
+
+      poly.addEventListener('click', e => { e.stopPropagation(); selectLine(poly, lk); });
+      poly.addEventListener('mouseenter', () => {
+        if (TRANSCRIPTIONS[lk]) { tt.textContent = TRANSCRIPTIONS[lk]; tt.style.display = 'block'; }
+      });
+      poly.addEventListener('mousemove', e => {
+        tt.style.left = (e.clientX + 16) + 'px';
+        tt.style.top  = (e.clientY - 10) + 'px';
+      });
+      poly.addEventListener('mouseleave', () => { tt.style.display = 'none'; });
+    } else {
+      poly.setAttribute('fill', st.fill);
+      poly.setAttribute('stroke', st.stroke);
+    }
+    ov.appendChild(poly);
+  });
+}
+
+// ── Select line ────────────────────────────────────────────────────────
+function selectLine(poly, lk) {
+  if (sel) sel.classList.remove('selected');
+  sel = poly; poly.classList.add('selected');
+  ikey.textContent = lk;
+  if (TRANSCRIPTIONS[lk]) {
+    itext.className = ''; itext.textContent = TRANSCRIPTIONS[lk];
+  } else {
+    itext.className = 'placeholder'; itext.textContent = 'No transcription for this line';
+  }
+}
+
+function resetInfo() {
+  ikey.textContent = '';
+  itext.className = 'placeholder';
+  itext.textContent = 'Click a line to see transcription';
+}
+
+cw.addEventListener('click', e => {
+  if (e.target === pi || e.target === ov) {
+    if (sel) { sel.classList.remove('selected'); sel = null; } resetInfo();
+  }
+});
+
+// ── Zoom ───────────────────────────────────────────────────────────────
+function applyZoom() {
+  const newWidth = pi.naturalWidth * zoom;
+  
+
+  cw.style.width = newWidth + 'px';
+  
+
+  pi.style.width = '100%'; 
+  
+
+  $('zoom-label').textContent = Math.round(zoom * 100) + '%';
+}
+
+$('zin').addEventListener('click',    () => { zoom = Math.min(zoom + .2, 4); applyZoom(); });
+$('zout').addEventListener('click',   () => { zoom = Math.max(zoom - .2, .2); applyZoom(); });
+$('zreset').addEventListener('click', () => { zoom = 1; applyZoom(); });
+
+document.addEventListener('keydown', e => {
+  if (e.target === searchInput) return;
+  if (e.key === '+' || e.key === '=') { zoom = Math.min(zoom + .15, 4); applyZoom(); }
+  if (e.key === '-')  { zoom = Math.max(zoom - .15, .2); applyZoom(); }
+  if (e.key === '0')  { zoom = 1; applyZoom(); }
+  const idx = PAGES.indexOf(cur);
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowDown') && idx < PAGES.length - 1) showPage(PAGES[idx+1]);
+  if ((e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   && idx > 0) showPage(PAGES[idx-1]);
+});
+
+// ── Search ─────────────────────────────────────────────────────────────
+function doSearch() {
+  const q = searchInput.value.trim();
+  searchHits = [];
+  searchIdx  = -1;
+
+  if (!q) {
+    sc.textContent = '';
+    renderSidebar(null);
+    if (cur) drawOverlay(cur);
+    return;
+  }
+
+  const hitPages = {};
+  PAGES.forEach(pageKey => {
+    const shapes = LABELS[pageKey] || [];
+    shapes.forEach(shape => {
+      if (shape.cat !== 4) return;
+      const lk = `${pageKey}_line_${shape.file_line_idx}`;
+      const tx = TRANSCRIPTIONS[lk] || '';
+      if (tx.includes(q)) {
+        searchHits.push({ pageKey, file_line_idx: shape.file_line_idx, lk });
+        hitPages[pageKey] = (hitPages[pageKey] || 0) + 1;
+      }
+    });
+  });
+
+  if (!searchHits.length) {
+    sc.textContent = 'No results';
+    renderSidebar(null);
+    if (cur) drawOverlay(cur);
+    return;
+  }
+
+  sc.textContent = `1 / ${searchHits.length}`;
+  searchIdx = 0;
+  renderSidebar(hitPages);
+  jumpToHit(0);
+}
+
+function jumpToHit(idx) {
+  if (!searchHits.length) return;
+  searchIdx = ((idx % searchHits.length) + searchHits.length) % searchHits.length;
+  sc.textContent = `${searchIdx + 1} / ${searchHits.length}`;
+  const hit = searchHits[searchIdx];
+
+  const go = () => {
+    const poly = ov.querySelector(`[data-lk="${hit.lk}"]`);
+    if (poly) {
+      const bb = poly.getBoundingClientRect();
+      const viewerEl = $('viewer');
+      const vb = viewerEl.getBoundingClientRect();
+      const scrollTop  = viewerEl.scrollTop  + (bb.top  - vb.top)  - vb.height/2 + (bb.height/2);
+      const scrollLeft = viewerEl.scrollLeft + (bb.left - vb.left) - vb.width/2  + (bb.width/2);
+      viewerEl.scrollTo({ top: scrollTop, left: scrollLeft, behavior: 'smooth' });
+      
+      if (sel) sel.classList.remove('selected');
+      sel = poly; poly.classList.add('selected');
+      ikey.textContent = hit.lk;
+      const tx = TRANSCRIPTIONS[hit.lk] || '';
+      itext.className = tx ? '' : 'placeholder';
+      itext.textContent = tx || 'No transcription';
+    }
+  };
+
+  if (cur !== hit.pageKey) {
+    showPage(hit.pageKey, () => go());
+  } else {
+    drawOverlay(cur);
+    go();
+  }
+}
+
+$('btn-next').addEventListener('click',  () => jumpToHit(searchIdx + 1));
+$('btn-prev').addEventListener('click',  () => jumpToHit(searchIdx - 1));
+$('btn-clear').addEventListener('click', () => {
+  searchInput.value = '';
+  doSearch();
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.shiftKey ? jumpToHit(searchIdx - 1) : jumpToHit(searchIdx + 1); }
+  if (e.key === 'Escape') { searchInput.value = ''; doSearch(); }
+});
+
+let searchTimer;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 300);
+});
+
+// ── Start ──────────────────────────────────────────────────────────────
+initApp();
+</script>
+</body>
+</html>
