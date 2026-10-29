@@ -6,3 +6,4 @@ The data is processed with the OCR model for printed Ottoman Turkish [Ottoman-Pr
 ## License
 Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0).
 https://creativecommons.org/licenses/by-nc/4.0/
+The original images are in the public domain. The license applies to the layout and OCR data.
